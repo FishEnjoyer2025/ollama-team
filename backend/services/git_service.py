@@ -72,21 +72,53 @@ async def merge(branch: str, into: str = "main") -> bool:
 async def revert(commit_hash: Optional[str] = None) -> bool:
     """Revert the last commit or a specific commit."""
     if commit_hash is None:
-        code, out, err = await _run("git reset --hard HEAD~1")
-        return code == 0
+        code, _, err = await _run("git reset --hard HEAD~1")
+        if code != 0:
+            logger.error(f"Revert failed: {err}")
+            return False
     else:
-        code, out, err = await _run(f"git revert {commit_hash}")
-        return code == 0
+        code, _, err = await _run(f"git revert "{commit_hash}"")
+        if code != 0:
+            logger.error(f"Revert failed: {err}")
+            return False
+    logger.info(f"Reverted commit {commit_hash}")
+    return True
 
-async def get_diff(branch: Optional[str] = None) -> str:
-    """Get the diff of a branch or the working directory."""
-    if branch is None:
-        code, out, err = await _run("git diff")
-    else:
-        code, out, err = await _run(f"git diff {branch}")
+async def get_diff(branch1: str, branch2: str) -> Optional[str]:
+    """Get the diff between two branches."""
+    code, out, err = await _run(f"git diff {branch1} {branch2}")
+    if code != 0:
+        logger.error(f"Failed to get diff: {err}")
+        return None
     return out
 
-async def get_staged_diff() -> str:
-    """Get the diff of staged changes."""
-    code, out, err = await _run("git diff --cached")
+async def get_log(branch: str) -> Optional[str]:
+    """Get the commit log for a branch."""
+    code, out, err = await _run(f"git log {branch}")
+    if code != 0:
+        logger.error(f"Failed to get log: {err}")
+        return None
     return out
+
+async def get_file_content(path: str) -> Optional[str]:
+    """Get the content of a file."""
+    code, out, err = await _run(f"git show HEAD:{path}")
+    if code != 0:
+        logger.error(f"Failed to get file content: {err}")
+        return None
+    return out
+
+async def write_file(path: str, content: str) -> bool:
+    """Write content to a file."""
+    with open(path, 'w') as f:
+        f.write(content)
+    await _run(f'git add "{path}"')
+    return True
+
+async def list_files() -> List[str]:
+    """List all files in the repository."""
+    code, out, err = await _run("git ls-files")
+    if code != 0:
+        logger.error(f"Failed to list files: {err}")
+        return []
+    return out.splitlines()

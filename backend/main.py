@@ -183,26 +183,18 @@ async def get_agent(name: str):
 
 @app.get("/api/system/health")
 async def system_health():
-    import httpx
+    from backend.services.llm_service import llm
 
-    # Check Ollama
-    ollama_status = "offline"
-    ollama_models = []
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get("http://localhost:11434/api/tags", timeout=5)
-            if resp.status_code == 200:
-                ollama_status = "online"
-                ollama_models = resp.json().get("models", [])
-    except Exception:
-        pass
+    # Check LLM backend
+    llm_status = await llm.get_status()
+    llm_models = await llm.list_models()
 
     # System resources
     cpu_percent = psutil.cpu_percent(interval=0.1)
     memory = psutil.virtual_memory()
 
     return {
-        "ollama": {"status": ollama_status, "models": ollama_models},
+        "llm": {"backend": llm_status.get("backend", "unknown"), "models": llm_models, "status": llm_status},
         "cpu_percent": cpu_percent,
         "memory": {
             "total_gb": round(memory.total / (1024**3), 1),

@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from backend.services.ollama_service import ollama
+from backend.services.llm_service import llm
 from backend import db
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class Agent:
         success = False
         try:
             response = await asyncio.wait_for(
-                ollama.generate(
+                llm.generate(
                     model=self.model,
                     prompt=context,
                     system=system_prompt,
