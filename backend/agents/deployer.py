@@ -16,7 +16,6 @@ class DeployerAgent:
         """Create a feature branch for an improvement."""
         import time
         ts = int(time.time())
-        # Sanitize description for branch name
         slug = description[:40].lower()
         slug = "".join(c if c.isalnum() or c == "-" else "-" for c in slug)
         slug = slug.strip("-")
@@ -24,7 +23,6 @@ class DeployerAgent:
 
         success = await git_service.create_branch(branch_name)
         if not success:
-            logger.error(f"Failed to create branch: {branch_name}")
             raise RuntimeError(f"Failed to create branch: {branch_name}")
         return branch_name
 
@@ -32,38 +30,46 @@ class DeployerAgent:
         """Commit current changes. Returns commit hash."""
         sha = await git_service.commit(message, files)
         if not sha:
-            logger.error("Failed to commit changes")
             raise RuntimeError("Failed to commit changes")
         return sha
 
     async def merge_to_main(self, branch: str) -> bool:
-        """Merge feature branch into main."""
+        """Merge feature branch into main and push to GitHub."""
         success = await git_service.merge(branch, "main")
         if success:
-            # Clean up the feature branch
             await git_service.delete_branch(branch)
+            await self.push_to_remote()
         return success
+
+    async def push_to_remote(self) -> bool:
+        """Push main to GitHub."""
+        code, out, err = await git_service._run("git push origin main")
+        if code != 0:
+            logger.warning(f"Git push failed (non-fatal): {err}")
+            return False
+        logger.info("Pushed to GitHub")
+        return True
 
     async def verify_health(self) -> bool:
         """Check system health after deploy."""
         return await check_health()
 
     async def rollback(self, reason: str) -> bool:
-        """Revert the last commit on main."""
+        """Revert the last commit on main and push."""
         logger.warning(f"Rolling back: {reason}")
         await git_service.checkout("main")
         success = await git_service.revert()
         if success:
             logger.info("Rollback successful")
+            await self.push_to_remote()
         else:
             logger.error("Rollback failed!")
         return success
 
     async def restart_backend(self) -> bool:
-        """Restart the backend service.
+        """Signal for restart (handled by process manager)."""
+        logger.info("Backend restart requested")
+        return True
 
-        In practice this signals the orchestrator to reload.
-        Full process restart would be handled by supervisor/systemd.
-        """
-        logger.info("Backend restart requested (handled by process manager)")
-        # The orchestrator checks for t
+
+deployer = DeployerAgent()
