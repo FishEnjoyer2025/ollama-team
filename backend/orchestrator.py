@@ -16,13 +16,16 @@ from backend.services import git_service
 
 logger = logging.getLogger(__name__)
 
-# Protect infra + base agent (agents keep breaking it)
+# Protect everything the agents keep breaking
 PROTECTED_PATHS = {
     "backend/db.py",
     "backend/services/health.py",
     "backend/orchestrator.py",
     "backend/main.py",
     "backend/agents/base.py",
+    "backend/agents/planner.py",
+    "backend/agents/coder.py",
+    "backend/agents/deployer.py",
     ".gitignore",
     ".git",
     "ollama_team.db",
