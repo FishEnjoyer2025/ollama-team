@@ -7,6 +7,10 @@ export default function AgentProfiles() {
 
   useEffect(() => {
     getAgents().then((r) => setAgents(r.agents)).catch(() => {});
+    const interval = setInterval(() => {
+      getAgents().then((r) => setAgents(r.agents)).catch(() => {});
+    }, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const selectAgent = async (name: string) => {

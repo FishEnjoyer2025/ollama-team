@@ -16,19 +16,16 @@ from backend.services import git_service
 
 logger = logging.getLogger(__name__)
 
-# Files agents are NEVER allowed to modify
+# Protect infra + base agent (agents keep breaking it)
 PROTECTED_PATHS = {
     "backend/db.py",
     "backend/services/health.py",
+    "backend/orchestrator.py",
+    "backend/main.py",
+    "backend/agents/base.py",
     ".gitignore",
     ".git",
     "ollama_team.db",
-    "docs/",
-    "backend/agents/base.py",
-    "backend/orchestrator.py",
-    "backend/main.py",
-    "backend/services/tools.py",
-    "backend/services/ollama_service.py",
 }
 
 # Frontend is also protected (agents work on backend/prompts only)
@@ -178,8 +175,8 @@ class Orchestrator:
                     await self._abandon(cycle_id, branch_name, "All edits targeted protected files")
                     return cycle_id
 
-                # Apply edits
-                modified = await coder.apply_edits(edits)
+                # Apply edits — only to files in the proposal
+                modified = await coder.apply_edits(edits, allowed_paths=proposal.get("files", []))
 
                 # Validate syntax before proceeding
                 valid, syntax_issues = await validate_edits(edits)

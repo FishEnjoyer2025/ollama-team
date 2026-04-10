@@ -24,7 +24,6 @@ def test_allowed_paths_pass():
     orch = Orchestrator()
     paths = [
         "backend/agents/planner.py",
-        "backend/orchestrator.py",
         "prompts/planner.md",
         "tests/test_new.py",
     ]

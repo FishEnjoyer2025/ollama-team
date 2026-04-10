@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class PlannerAgent(Agent):
     name = "planner"
-    model = "qwen2.5:7b"
+    model = "qwen2.5-coder:3b"
 
     async def evaluate_and_propose(self) -> dict:
         """Evaluate the system and propose an improvement."""
@@ -19,7 +19,6 @@ class PlannerAgent(Agent):
         settings = await db.get_settings()
         guidance = settings.get("guidance", "")
 
-        # Compact cycle summaries
         cycle_info = []
         for c in recent_cycles:
             p = c.get("proposal", "")
@@ -37,12 +36,18 @@ class PlannerAgent(Agent):
 
         context = f"""Thumbs up: {feedback_summary['total_up']} | Thumbs down: {feedback_summary['total_down']}
 {guidance_block}
-Recent cycles:
+Recent cycles (DO NOT repeat these — pick something DIFFERENT):
 {chr(10).join(cycle_info) if cycle_info else "None yet"}
 
-Files: {', '.join(file_list[:30])}
+Modifiable files: backend/agents/planner.py, coder.py, reviewer.py, tester.py, deployer.py, backend/services/ollama_service.py, tools.py, git_service.py, prompts/*.md, tests/*.py
 
-Propose ONE small improvement. Limit to 1-2 files. Prefer backend/agents/ or prompts/ files.
+Pick ONE improvement from this list (choose randomly, not always #1):
+1. Add a new test to tests/
+2. Improve a prompt in prompts/ for clearer instructions
+3. Add logging to an agent in backend/agents/
+4. Optimize ollama_service.py settings
+5. Improve git_service.py with better error handling
+6. Add input validation to an agent
 
 JSON only:
 {{"description": "...", "files": ["max 2 files"], "expected_outcome": "...", "risk": "low"}}"""

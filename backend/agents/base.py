@@ -34,7 +34,7 @@ class Agent:
         logger.warning(f"No prompt file found for {self.name} at {self.prompt_path}")
         return f"You are the {self.name} agent."
 
-    async def invoke(self, context: str, timeout: Optional[float] = None) -> str:
+    async def invoke(self, context: str, timeout: Optional[float] = None, json_mode: bool = False) -> str:
         """Invoke this agent with context. Returns the response text."""
         timeout = timeout or self.default_timeout
         system_prompt = self.load_prompt()
@@ -48,6 +48,7 @@ class Agent:
                     prompt=context,
                     system=system_prompt,
                     timeout=timeout,
+                    json_mode=json_mode,
                 ),
                 timeout=timeout + 10,
             )
@@ -63,11 +64,15 @@ class Agent:
             duration = time.monotonic() - start
             await db.record_agent_invocation(self.name, success, duration)
 
+    async def invoke_json(self, context: str, timeout: Optional[float] = None) -> str:
+        """Invoke with Ollama's JSON mode forced — guarantees valid JSON output."""
+        return await self.invoke(context, timeout, json_mode=True)
+
     async def invoke_structured(
         self, context: str, timeout: Optional[float] = None
     ) -> dict:
-        """Invoke and parse JSON from the response."""
-        raw = await self.invoke(context, timeout)
+        """Invoke with JSON mode and parse the response."""
+        raw = await self.invoke_json(context, timeout)
         return self._parse_json(raw)
 
     def _parse_json(self, text: str) -> dict:

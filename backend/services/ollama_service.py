@@ -18,26 +18,31 @@ class OllamaService:
         prompt: str,
         system: str = "",
         timeout: float = 300.0,
+        json_mode: bool = False,
     ) -> str:
         """Generate a response from Ollama. Loads model if not already loaded."""
         if self.current_model != model:
             await self.load_model(model)
 
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "system": system,
+            "stream": False,
+            "options": {
+                "num_ctx": 4096,
+                "temperature": 0.3,
+                "num_thread": 8,
+            },
+        }
+        if json_mode:
+            payload["format"] = "json"
+
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.post(
                     f"{OLLAMA_BASE}/api/generate",
-                    json={
-                        "model": model,
-                        "prompt": prompt,
-                        "system": system,
-                        "stream": False,
-                        "options": {
-                            "num_ctx": 4096,
-                            "temperature": 0.3,
-                            "num_thread": 8,
-                        },
-                    },
+                    json=payload,
                     timeout=timeout,
                 )
                 resp.raise_for_status()

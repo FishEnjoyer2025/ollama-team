@@ -5,64 +5,95 @@ from backend.services import git_service
 
 logger = logging.getLogger(__name__)
 
+PROJECT_STRUCTURE = """Project layout (use these import paths):
+- backend/agents/planner.py, coder.py, reviewer.py, tester.py, deployer.py
+- backend/services/ollama_service.py, git_service.py, tools.py
+- backend/agents/base.py (DO NOT MODIFY - protected)
+- tests/test_*.py (imports: from backend.agents.planner import planner)
+- prompts/*.md (agent system prompts, plain markdown)"""
+
 
 class CoderAgent(Agent):
     name = "coder"
     model = "qwen2.5-coder:7b"
 
     async def implement(self, proposal: dict) -> list[dict]:
-        """Implement a proposed change.
-
-        Returns:
-            List of file edits: [{"path": str, "content": str}]
-        """
-        # Limit to 2 files max to keep generation fast
+        """Implement one file at a time for reliability."""
         target_files = proposal.get("files", [])[:2]
+        edits = []
 
-        # Read only the target files (no extra context — speed over quality)
-        file_contents = {}
-        for f in target_files:
-            content = await git_service.get_file_content(f)
-            if content is not None:
-                # Truncate large files to keep prompt small
-                file_contents[f] = content[:2000]
+        for filepath in target_files:
+            current = await git_service.get_file_content(filepath)
+            edit = await self._implement_single_file(
+                filepath,
+                current,
+                proposal.get("description", ""),
+            )
+            if edit:
+                edits.append(edit)
 
-        context = f"""Modify these files for: {proposal.get('description', '')}
+        return edits
 
-{chr(10).join(f'--- {path} ---{chr(10)}{content}' for path, content in file_contents.items())}
+    async def _implement_single_file(self, filepath: str, current_content: str | None, task: str) -> dict | None:
+        """Generate the new content for a single file."""
+        current_block = ""
+        if current_content:
+            current_block = f"Current content of {filepath}:\n{current_content[:2500]}"
+        else:
+            current_block = f"{filepath} does not exist yet. Create it."
 
-Output ONLY a JSON array. Each item has "path" and "content" (the full new file).
-Keep changes minimal. Output:"""
+        context = f"""{PROJECT_STRUCTURE}
 
-        result = await self.invoke_structured(context)
+{current_block}
 
-        if isinstance(result, dict) and "raw_response" in result:
-            raw = result["raw_response"]
-            try:
-                if "[" in raw:
-                    start = raw.index("[")
-                    end = raw.rindex("]") + 1
-                    return json.loads(raw[start:end])
-            except (ValueError, json.JSONDecodeError):
-                pass
-            logger.error("Coder produced unparseable output")
-            return []
+Task: {task}
 
-        if isinstance(result, list):
-            return result
+Respond with JSON: {{"path": "{filepath}", "content": "the complete new file content"}}"""
 
-        if isinstance(result, dict) and "path" in result and "content" in result:
-            return [result]
+        raw = await self.invoke_json(context)
 
-        return []
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict) and "content" in parsed:
+                return {"path": filepath, "content": parsed["content"]}
+            if isinstance(parsed, list) and parsed:
+                item = parsed[0]
+                if isinstance(item, dict) and "content" in item:
+                    return {"path": filepath, "content": item["content"]}
+        except json.JSONDecodeError:
+            pass
 
-    async def apply_edits(self, edits: list[dict]) -> list[str]:
+        # Try extracting from raw text
+        try:
+            for opener in ["{", "["]:
+                if opener in raw:
+                    start = raw.index(opener)
+                    parsed = json.loads(raw[start:])
+                    if isinstance(parsed, dict) and "content" in parsed:
+                        return {"path": filepath, "content": parsed["content"]}
+                    if isinstance(parsed, list) and parsed and "content" in parsed[0]:
+                        return {"path": filepath, "content": parsed[0]["content"]}
+        except (json.JSONDecodeError, ValueError, IndexError):
+            pass
+
+        logger.error(f"Could not parse coder output for {filepath}")
+        return None
+
+    async def apply_edits(self, edits: list[dict], allowed_paths: list[str] = None) -> list[str]:
         """Write file edits to disk. Returns list of modified file paths."""
         modified = []
         for edit in edits:
             path = edit.get("path", "")
             content = edit.get("content", "")
             if not path or not content:
+                continue
+            # Safety: only write to files that were in the proposal
+            if allowed_paths and path not in allowed_paths:
+                logger.warning(f"Coder tried to write to {path} which wasn't in the proposal — blocked")
+                continue
+            # Safety: content must be at least 10 chars (prevent blank overwrites)
+            if len(content.strip()) < 10:
+                logger.warning(f"Coder produced near-empty content for {path} — blocked")
                 continue
             await git_service.write_file(path, content)
             modified.append(path)

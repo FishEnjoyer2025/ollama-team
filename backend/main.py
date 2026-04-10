@@ -44,8 +44,11 @@ orchestrator = Orchestrator()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.init_db()
+    # Clean up stale "running" cycles from previous crashes
+    stale = await db.list_cycles(status="running", limit=50)
+    for c in stale:
+        await db.complete_cycle(c["id"], "failed", rollback_reason="Stale from server restart")
     orchestrator._broadcast = ws_manager.broadcast
-    # Start the improvement loop in the background
     loop_task = asyncio.create_task(orchestrator.run_loop())
     yield
     orchestrator.stop()
