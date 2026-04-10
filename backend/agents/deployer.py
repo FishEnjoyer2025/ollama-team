@@ -24,6 +24,7 @@ class DeployerAgent:
 
         success = await git_service.create_branch(branch_name)
         if not success:
+            logger.error(f"Failed to create branch: {branch_name}")
             raise RuntimeError(f"Failed to create branch: {branch_name}")
         return branch_name
 
@@ -31,6 +32,7 @@ class DeployerAgent:
         """Commit current changes. Returns commit hash."""
         sha = await git_service.commit(message, files)
         if not sha:
+            logger.error("Failed to commit changes")
             raise RuntimeError("Failed to commit changes")
         return sha
 
@@ -66,6 +68,5 @@ class DeployerAgent:
         logger.info("Backend restart requested (handled by process manager)")
         # The orchestrator checks for this flag
         return True
-
 
 deployer = DeployerAgent()
