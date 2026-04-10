@@ -15,7 +15,7 @@ class DeployerAgent:
     async def create_branch(self, description: str) -> str:
         """Create a feature branch for an improvement."""
         import time
-ts = int(time.time())
+        ts = int(time.time())
         # Sanitize description for branch name
         slug = description[:40].lower()
         slug = "".join(c if c.isalnum() or c == "-" else "-" for c in slug)
