@@ -87,6 +87,10 @@ Respond with JSON: {{"path": "{filepath}", "content": "the complete new file con
             content = edit.get("content", "")
             if not path or not content:
                 continue
+            # Safety: path must have a file extension (not a bare directory)
+            if "." not in path.split("/")[-1]:
+                logger.warning(f"Coder output a directory path '{path}' instead of a file — blocked")
+                continue
             # Safety: only write to files that were in the proposal
             if allowed_paths and path not in allowed_paths:
                 logger.warning(f"Coder tried to write to {path} which wasn't in the proposal — blocked")

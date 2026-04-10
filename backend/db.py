@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS settings (
 """
 
 DEFAULT_SETTINGS = {
-    "cycle_cooldown_seconds": "30",
+    "cycle_cooldown_seconds": "60",
     "max_retries_per_step": "3",
     "process_timeout_seconds": "600",
     "health_check_timeout_seconds": "60",

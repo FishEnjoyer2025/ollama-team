@@ -39,18 +39,15 @@ class PlannerAgent(Agent):
 Recent cycles (DO NOT repeat these — pick something DIFFERENT):
 {chr(10).join(cycle_info) if cycle_info else "None yet"}
 
-Modifiable files: backend/agents/planner.py, coder.py, reviewer.py, tester.py, deployer.py, backend/services/ollama_service.py, tools.py, git_service.py, prompts/*.md, tests/*.py
+Pick ONE task. Use EXACT file paths (not directories or globs):
+1. {{"description": "Add test for reviewer", "files": ["tests/test_reviewer.py"], "expected_outcome": "Better test coverage", "risk": "low"}}
+2. {{"description": "Improve reviewer prompt", "files": ["prompts/reviewer.md"], "expected_outcome": "Better reviews", "risk": "low"}}
+3. {{"description": "Add logging to deployer", "files": ["backend/agents/deployer.py"], "expected_outcome": "Better visibility", "risk": "low"}}
+4. {{"description": "Improve git_service error handling", "files": ["backend/services/git_service.py"], "expected_outcome": "Graceful failures", "risk": "low"}}
+5. {{"description": "Add test for git_service", "files": ["tests/test_git_service.py"], "expected_outcome": "Better coverage", "risk": "low"}}
+6. {{"description": "Improve tester prompt", "files": ["prompts/tester.md"], "expected_outcome": "Better testing", "risk": "low"}}
 
-Pick ONE improvement from this list (choose randomly, not always #1):
-1. Add a new test to tests/
-2. Improve a prompt in prompts/ for clearer instructions
-3. Add logging to an agent in backend/agents/
-4. Optimize ollama_service.py settings
-5. Improve git_service.py with better error handling
-6. Add input validation to an agent
-
-JSON only:
-{{"description": "...", "files": ["max 2 files"], "expected_outcome": "...", "risk": "low"}}"""
+Output ONE of these JSON objects (or similar). Vary your choice each cycle:"""
 
         result = await self.invoke_structured(context)
 
