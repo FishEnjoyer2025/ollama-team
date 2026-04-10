@@ -37,24 +37,34 @@ class DeployerAgent:
         return sha
 
     async def merge_to_main(self, branch: str) -> bool:
-        """Merge feature branch into main."""
+        """Merge feature branch into main and push to GitHub."""
         success = await git_service.merge(branch, "main")
         if success:
-            # Clean up the feature branch
             await git_service.delete_branch(branch)
+            await self.push_to_remote()
         return success
+
+    async def push_to_remote(self) -> bool:
+        """Push main to GitHub."""
+        code, out, err = await git_service._run("git push origin main")
+        if code != 0:
+            logger.warning(f"Git push failed (non-fatal): {err}")
+            return False
+        logger.info("Pushed to GitHub")
+        return True
 
     async def verify_health(self) -> bool:
         """Check system health after deploy."""
         return await check_health()
 
     async def rollback(self, reason: str) -> bool:
-        """Revert the last commit on main."""
+        """Revert the last commit on main and push."""
         logger.warning(f"Rolling back: {reason}")
         await git_service.checkout("main")
         success = await git_service.revert()
         if success:
             logger.info("Rollback successful")
+            await self.push_to_remote()
         else:
             logger.error("Rollback failed!")
         return success
