@@ -30,21 +30,20 @@ class CoderAgent(Agent):
     async def implement(self, proposal: dict) -> list[dict]:
         """Implement one file at a time for reliability."""
         target_files = proposal.get("files", [])[:2]
+        retry_error = proposal.get("_retry_error", "")
         edits = []
 
         for filepath in target_files:
             current = await git_service.get_file_content(filepath)
             edit = await self._implement_single_file(
-                filepath,
-                current,
-                proposal.get("description", ""),
+                filepath, current, proposal.get("description", ""), retry_error,
             )
             if edit:
                 edits.append(edit)
 
         return edits
 
-    async def _implement_single_file(self, filepath: str, current_content: str | None, task: str) -> dict | None:
+    async def _implement_single_file(self, filepath: str, current_content: str | None, task: str, retry_error: str = "") -> dict | None:
         """Generate the new content for a single file."""
         current_block = ""
         if current_content:
@@ -52,10 +51,21 @@ class CoderAgent(Agent):
         else:
             current_block = f"{filepath} does not exist yet. Create it."
 
+        # Show an existing test as template when writing test files
+        template_block = ""
+        if filepath.startswith("tests/"):
+            existing = await git_service.get_file_content("tests/test_agents.py")
+            if existing:
+                template_block = f"\nExample test file (follow this style):\n{existing[:1500]}\n"
+
+        error_block = ""
+        if retry_error:
+            error_block = f"\nPREVIOUS ATTEMPT FAILED: {retry_error}\nFix the issue this time.\n"
+
         context = f"""{PROJECT_STRUCTURE}
 
 {current_block}
-
+{template_block}{error_block}
 Task: {task}
 
 Respond with JSON: {{"path": "{filepath}", "content": "the complete new file content"}}"""

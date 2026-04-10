@@ -154,23 +154,35 @@ class Orchestrator:
             await db.update_cycle(cycle_id, branch_name=branch_name)
             await self._emit("step", {"action": "completed", "agent": "deployer", "branch": branch_name})
 
-            # --- Step 4: CODE (Coder) with retries ---
+            # Determine if this is a "safe" change (prompts/tests only — skip review)
+            safe_change = all(
+                f.startswith("prompts/") or f.startswith("tests/")
+                for f in proposal.get("files", [])
+            )
+
+            # --- Step 4: CODE (Coder) with retries + error feedback ---
             edits = []
+            last_error = ""
             for attempt in range(max_retries):
                 self._current_step = CycleStep.CODE
                 await self._emit("step", {"action": "started", "agent": "coder", "attempt": attempt + 1})
                 logger.info(f"[{cycle_id}] Coder implementing (attempt {attempt + 1})...")
 
+                # Feed previous error back to coder on retry
+                if last_error:
+                    proposal["_retry_error"] = last_error
+
                 edits = await coder.implement(proposal)
 
                 if not edits:
+                    last_error = "No edits produced. Output valid JSON: [{\"path\": \"...\", \"content\": \"...\"}]"
                     logger.warning(f"[{cycle_id}] Coder produced no edits")
                     if attempt < max_retries - 1:
                         continue
                     await self._abandon(cycle_id, branch_name, "Coder produced no edits after retries")
                     return cycle_id
 
-                # Filter protected files from edits
+                # Filter protected files
                 edits = [e for e in edits if e.get("path") not in PROTECTED_PATHS
                          and not any(e.get("path", "").startswith(p) for p in PROTECTED_PREFIXES)]
 
@@ -178,12 +190,20 @@ class Orchestrator:
                     await self._abandon(cycle_id, branch_name, "All edits targeted protected files")
                     return cycle_id
 
-                # Apply edits — only to files in the proposal
+                # Apply edits
                 modified = await coder.apply_edits(edits, allowed_paths=proposal.get("files", []))
 
-                # Validate syntax before proceeding
+                if not modified:
+                    last_error = "Edits were blocked — use exact file paths from the proposal"
+                    if attempt < max_retries - 1:
+                        continue
+                    await self._abandon(cycle_id, branch_name, "No files written after filtering")
+                    return cycle_id
+
+                # Validate syntax
                 valid, syntax_issues = await validate_edits(edits)
                 if not valid:
+                    last_error = f"Fix these syntax errors: {'; '.join(syntax_issues)}"
                     logger.warning(f"[{cycle_id}] Syntax validation failed: {syntax_issues}")
                     await self._emit("step", {"action": "validation_failed", "issues": syntax_issues})
                     if attempt < max_retries - 1:
@@ -199,7 +219,12 @@ class Orchestrator:
                     modified,
                 )
 
-                # --- Step 5: REVIEW (Reviewer) ---
+                # --- Step 5: REVIEW (skip for safe changes) ---
+                if safe_change:
+                    logger.info(f"[{cycle_id}] Skipping review (safe change: prompts/tests only)")
+                    await self._emit("step", {"action": "skipped", "agent": "reviewer", "reason": "safe change"})
+                    break
+
                 self._current_step = CycleStep.REVIEW
                 await self._emit("step", {"action": "started", "agent": "reviewer"})
                 logger.info(f"[{cycle_id}] Reviewer checking...")
@@ -211,15 +236,14 @@ class Orchestrator:
                     logger.info(f"[{cycle_id}] Review approved: {review['explanation']}")
                     break
                 else:
+                    last_error = f"Reviewer rejected: {review['explanation']}. Issues: {review.get('issues', [])}"
                     logger.warning(f"[{cycle_id}] Review rejected: {review['explanation']}")
                     if attempt < max_retries - 1:
-                        # Reset for retry — Coder will try again
-                        logger.info(f"[{cycle_id}] Retrying code...")
                         continue
-                    await self._abandon(cycle_id, branch_name, f"Review rejected after {max_retries} attempts: {review['explanation']}")
+                    await self._abandon(cycle_id, branch_name, f"Review rejected: {review['explanation']}")
                     return cycle_id
 
-            # --- Step 6: TEST (Tester) ---
+            # --- Step 6: TEST (run tests + retry with error if failed) ---
             self._current_step = CycleStep.TEST
             await self._emit("step", {"action": "started", "agent": "tester"})
             logger.info(f"[{cycle_id}] Tester validating...")
@@ -229,16 +253,27 @@ class Orchestrator:
             await self._emit("step", {"action": "completed", "agent": "tester", "passed": test_result["passed"]})
 
             if not test_result["passed"]:
-                logger.warning(f"[{cycle_id}] Tests failed: {test_result['summary']}")
-                await self._abandon(cycle_id, branch_name, f"Tests failed: {test_result['summary']}")
-                return cycle_id
+                # Try one more time — feed the error to the coder
+                test_error = test_result["output"][-1000:]
+                logger.warning(f"[{cycle_id}] Tests failed, attempting fix...")
+                proposal["_retry_error"] = f"Tests failed with this output:\n{test_error}\nFix the code."
 
-            # Commit any new test files
-            if test_result.get("new_tests"):
-                await deployer.commit_changes(
-                    f"[{cycle_id}] Add tests for: {proposal.get('description', '')[:50]}",
-                    test_result["new_tests"],
-                )
+                self._current_step = CycleStep.CODE
+                edits = await coder.implement(proposal)
+                if edits:
+                    edits = [e for e in edits if e.get("path") not in PROTECTED_PATHS
+                             and not any(e.get("path", "").startswith(p) for p in PROTECTED_PREFIXES)]
+                    modified = await coder.apply_edits(edits, allowed_paths=proposal.get("files", []))
+                    if modified:
+                        valid, _ = await validate_edits(edits)
+                        if valid:
+                            await deployer.commit_changes(f"[{cycle_id}] Fix: {proposal.get('description', '')[:50]}", modified)
+                            test_result = await tester.validate(proposal, edits)
+                            await db.update_cycle(cycle_id, test_output=test_result["output"][:5000])
+
+                if not test_result["passed"]:
+                    await self._abandon(cycle_id, branch_name, f"Tests failed: {test_result['summary']}")
+                    return cycle_id
 
             # --- Step 7: MERGE (Deployer) ---
             self._current_step = CycleStep.MERGE
