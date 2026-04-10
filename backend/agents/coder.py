@@ -7,20 +7,29 @@ logger = logging.getLogger(__name__)
 
 PROJECT_STRUCTURE = """Project layout and API reference:
 
-Agents (all inherit from Agent base class with: invoke(), invoke_json(), invoke_structured(), _parse_json()):
-- backend/agents/planner.py: PlannerAgent with evaluate_and_propose() -> dict
-- backend/agents/coder.py: CoderAgent with implement(proposal) -> list[dict], apply_edits(edits) -> list[str]
-- backend/agents/reviewer.py: ReviewerAgent with review(proposal, branch) -> dict
-- backend/agents/tester.py: TesterAgent with run_tests() -> dict, validate(proposal, edits) -> dict
-- backend/agents/deployer.py: DeployerAgent with create_branch(desc), commit_changes(msg), merge_to_main(branch), rollback(reason)
-
-Services:
-- backend/services/git_service.py: create_branch(), checkout(), commit(), merge(), revert(), get_diff(), get_log(), get_file_content(path), write_file(path, content), list_files()
+BACKEND (Python, FastAPI):
+- backend/agents/base.py: Agent base class with invoke(), invoke_json(), invoke_structured()
+- backend/agents/planner.py, coder.py, reviewer.py, tester.py, deployer.py
+- backend/services/git_service.py: create_branch(), checkout(), commit(), merge(), get_diff(), get_file_content(path), write_file(path, content), list_files()
 - backend/services/tools.py: validate_python_syntax(path), lint_file(path), validate_edits(edits), run_command(cmd)
+- Tests: from backend.agents.reviewer import reviewer (lowercase singleton)
+- Prompts: plain markdown files in prompts/
 
-Tests use: from backend.agents.reviewer import reviewer (lowercase singleton)
-Tests use: from backend.services.git_service import get_diff (function)
-Prompts are plain markdown files in prompts/"""
+FRONTEND (React 19 + TypeScript + TailwindCSS + Vite):
+- frontend/src/App.tsx: Main router with tabs: Activity, Cycles, Agents, Health, Settings
+- frontend/src/api.ts: API client — getCycles(), getAgents(), getSystemHealth(), submitFeedback(), etc.
+- frontend/src/hooks/useWebSocket.ts: Real-time WebSocket connection
+- frontend/src/pages/ActivityFeed.tsx: Live activity, guidance box, status banner
+- frontend/src/pages/CycleHistory.tsx: Completed cycles with expandable details + feedback buttons
+- frontend/src/pages/AgentProfiles.tsx: Per-agent stats and prompt viewer
+- frontend/src/pages/SystemHealth.tsx: System resource monitoring
+- frontend/src/pages/Settings.tsx: Configuration panel
+- frontend/src/components/*.tsx: Reusable UI components (create new ones here!)
+
+API BASE: http://localhost:8000 — All endpoints under /api/
+Key endpoints: GET /api/cycles, GET /api/agents, GET /api/system/health, POST /api/cycles/{id}/feedback
+
+STYLE: Dark theme (bg-gray-900/800), accent colors per agent (purple=planner, blue=coder, yellow=reviewer, green=tester, orange=deployer). Use TailwindCSS classes. Keep it fun and visual."""
 
 
 class CoderAgent(Agent):
@@ -51,12 +60,27 @@ class CoderAgent(Agent):
         else:
             current_block = f"{filepath} does not exist yet. Create it."
 
-        # Show an existing test as template when writing test files
+        # Show context depending on file type
         template_block = ""
         if filepath.startswith("tests/"):
             existing = await git_service.get_file_content("tests/test_agents.py")
             if existing:
                 template_block = f"\nExample test file (follow this style):\n{existing[:1500]}\n"
+            test_name = filepath.replace("tests/test_", "").replace(".py", "")
+            for candidate in [f"backend/services/{test_name}.py", f"backend/agents/{test_name}.py", f"backend/{test_name}.py"]:
+                source = await git_service.get_file_content(candidate)
+                if source:
+                    template_block += f"\nSource code of {candidate} (import from here, use these exact function names):\n{source[:3000]}\n"
+                    break
+        elif filepath.startswith("frontend/"):
+            # Show an existing page as reference for style/patterns
+            ref = await git_service.get_file_content("frontend/src/pages/ActivityFeed.tsx")
+            if ref:
+                template_block = f"\nReference page (follow this React + TailwindCSS style):\n{ref[:2500]}\n"
+            # Show api.ts so the coder knows available API functions
+            api = await git_service.get_file_content("frontend/src/api.ts")
+            if api:
+                template_block += f"\nAvailable API functions (frontend/src/api.ts):\n{api[:2000]}\n"
 
         error_block = ""
         if retry_error:
@@ -68,35 +92,47 @@ class CoderAgent(Agent):
 {template_block}{error_block}
 Task: {task}
 
-Respond with JSON: {{"path": "{filepath}", "content": "the complete new file content"}}"""
+Write the COMPLETE file content for {filepath} inside a markdown code block like this:
+```python
+# your code here
+```
+Do NOT use JSON. Just write the Python code inside the code block."""
 
-        raw = await self.invoke_json(context)
+        raw = await self.invoke(context)
 
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, dict) and "content" in parsed:
-                return {"path": filepath, "content": parsed["content"]}
-            if isinstance(parsed, list) and parsed:
-                item = parsed[0]
-                if isinstance(item, dict) and "content" in item:
-                    return {"path": filepath, "content": item["content"]}
-        except json.JSONDecodeError:
-            pass
-
-        # Try extracting from raw text
-        try:
-            for opener in ["{", "["]:
-                if opener in raw:
-                    start = raw.index(opener)
-                    parsed = json.loads(raw[start:])
-                    if isinstance(parsed, dict) and "content" in parsed:
-                        return {"path": filepath, "content": parsed["content"]}
-                    if isinstance(parsed, list) and parsed and "content" in parsed[0]:
-                        return {"path": filepath, "content": parsed[0]["content"]}
-        except (json.JSONDecodeError, ValueError, IndexError):
-            pass
+        # Extract code from markdown code block
+        content = self._extract_code_block(raw)
+        if content:
+            return {"path": filepath, "content": content}
 
         logger.error(f"Could not parse coder output for {filepath}")
+        return None
+
+    def _extract_code_block(self, text: str) -> str | None:
+        """Extract code from markdown code blocks."""
+        # Try ```python ... ```
+        for marker in ["```python", "```py", "```"]:
+            if marker in text:
+                try:
+                    start = text.index(marker) + len(marker)
+                    # Skip to next line
+                    if text[start] == "\n":
+                        start += 1
+                    end = text.index("```", start)
+                    code = text[start:end].strip()
+                    if len(code) > 10:
+                        return code
+                except (ValueError, IndexError):
+                    continue
+        # Fallback: if it looks like raw Python code (starts with import/from/def/class)
+        for line in text.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith(("import ", "from ", "def ", "class ", "#")):
+                # Take everything from this line onward
+                idx = text.index(line)
+                code = text[idx:].strip()
+                if len(code) > 10:
+                    return code
         return None
 
     async def apply_edits(self, edits: list[dict], allowed_paths: list[str] = None) -> list[str]:

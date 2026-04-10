@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class PlannerAgent(Agent):
     name = "planner"
-    model = "qwen2.5-coder:3b"
+    model = "qwen2.5-coder:7b"
 
     async def evaluate_and_propose(self) -> dict:
         """Evaluate the system and propose an improvement."""
@@ -34,22 +34,42 @@ class PlannerAgent(Agent):
         if guidance:
             guidance_block = f"\nOPERATOR GUIDANCE (highest priority):\n{guidance}\n"
 
-        context = f"""Thumbs up: {feedback_summary['total_up']} | Thumbs down: {feedback_summary['total_down']}
+        context = f"""You are the Planner for Ollama Team — a self-improving AI system with a React dashboard.
+Your job: propose ONE creative improvement that makes the system cooler, more useful, or more fun.
+
+Feedback: {feedback_summary['total_up']} thumbs up, {feedback_summary['total_down']} thumbs down
 {guidance_block}
-Recent cycles (DO NOT repeat these — pick something DIFFERENT):
-{chr(10).join(cycle_info) if cycle_info else "None yet"}
+Recent cycles (DO NOT repeat these):
+{chr(10).join(cycle_info) if cycle_info else "None yet — first cycle! Do something fun."}
 
-Pick ONE task. Output the JSON exactly as shown. Vary your choice each cycle:
-1. {{"description": "Add test for reviewer agent", "files": ["tests/test_reviewer.py"], "expected_outcome": "Better test coverage", "risk": "low"}}
-2. {{"description": "Improve reviewer prompt for clearer output", "files": ["prompts/reviewer.md"], "expected_outcome": "Better reviews", "risk": "low"}}
-3. {{"description": "Improve git_service error handling", "files": ["backend/services/git_service.py"], "expected_outcome": "Graceful failures", "risk": "low"}}
-4. {{"description": "Add test for git_service functions", "files": ["tests/test_git_service.py"], "expected_outcome": "Better coverage", "risk": "low"}}
-5. {{"description": "Improve tester prompt for better test output", "files": ["prompts/tester.md"], "expected_outcome": "Better testing", "risk": "low"}}
-6. {{"description": "Add helper to validate file paths in tools.py", "files": ["backend/services/tools.py"], "expected_outcome": "Better validation", "risk": "low"}}
-7. {{"description": "Improve deployer prompt", "files": ["prompts/deployer.md"], "expected_outcome": "Clearer deploy steps", "risk": "low"}}
-8. {{"description": "Add test for safety system", "files": ["tests/test_safety_extended.py"], "expected_outcome": "More safety tests", "risk": "low"}}
+WHAT YOU CAN MODIFY (max 2 files per proposal):
+- frontend/src/pages/*.tsx — Dashboard pages (React + TailwindCSS)
+- frontend/src/components/*.tsx — UI components (create new ones!)
+- backend/agents/*.py — Agent implementations (improve yourself!)
+- backend/services/*.py — Services (llm_service, git_service, tools, health)
+- prompts/*.md — Agent system prompts
+- tests/test_*.py — Test files
 
-Output ONE of these JSON objects. Do NOT modify any file not listed above:"""
+WHAT YOU CANNOT MODIFY (will be blocked):
+- backend/main.py, orchestrator.py, db.py (core loop — touching these bricks the system)
+- frontend/src/App.tsx, api.ts, main.tsx, hooks/ (core frontend wiring)
+
+YOUR ONLY OBJECTIVE: Make the agents SMARTER and FASTER. Every cycle should improve speed or intelligence.
+
+IDEAS (pick one, or invent your own):
+- Optimize prompts to get better output with fewer tokens
+- Add caching to avoid redundant work (file reads, model calls)
+- Make the coder's output parsing more robust and faster
+- Improve the reviewer to catch more real bugs, fewer false positives
+- Make the tester smarter about what to test
+- Reduce latency in the pipeline (fewer round trips, smarter retries)
+- Improve JSON/code extraction from model output
+- Add smarter context selection — feed agents only what they need
+- Optimize the planner to make better proposals based on feedback patterns
+- Improve error recovery — fail fast, retry smart
+
+Output ONLY this JSON (no other text):
+{{"description": "what you want to do", "files": ["path/to/file1.tsx"], "expected_outcome": "what it achieves", "risk": "low"}}"""
 
         result = await self.invoke_structured(context)
 

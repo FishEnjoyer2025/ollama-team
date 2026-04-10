@@ -16,23 +16,27 @@ from backend.services import git_service
 
 logger = logging.getLogger(__name__)
 
-# Protect everything the agents keep breaking
+# Only protect what would brick the system if broken
 PROTECTED_PATHS = {
-    "backend/db.py",
-    "backend/services/health.py",
     "backend/orchestrator.py",
     "backend/main.py",
-    "backend/agents/base.py",
-    "backend/agents/planner.py",
-    "backend/agents/coder.py",
-    "backend/agents/deployer.py",
+    "backend/db.py",
     ".gitignore",
     ".git",
     "ollama_team.db",
 }
 
-# Frontend is also protected (agents work on backend/prompts only)
-PROTECTED_PREFIXES = ("frontend/", ".git/", "docs/")
+# Core frontend files protected, but agents can modify pages/components
+PROTECTED_PREFIXES = (".git/", "docs/")
+PROTECTED_FRONTEND = {
+    "frontend/src/main.tsx",
+    "frontend/src/App.tsx",
+    "frontend/src/api.ts",
+    "frontend/src/hooks/useWebSocket.ts",
+    "frontend/package.json",
+    "frontend/vite.config.ts",
+    "frontend/index.html",
+}
 
 
 class CycleStep(str, Enum):
@@ -70,7 +74,7 @@ class Orchestrator:
         """Filter out protected file paths. Returns only allowed paths."""
         allowed = []
         for p in paths:
-            if p in PROTECTED_PATHS:
+            if p in PROTECTED_PATHS or p in PROTECTED_FRONTEND:
                 logger.warning(f"Blocked edit to protected file: {p}")
                 continue
             if any(p.startswith(prefix) for prefix in PROTECTED_PREFIXES):

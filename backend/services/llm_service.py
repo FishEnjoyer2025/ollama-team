@@ -209,7 +209,7 @@ class LLMService:
         return await loop.run_in_executor(None, _generate)
 
     async def _generate_ollama(self, model: str, prompt: str, system: str, timeout: float, json_mode: bool) -> str:
-        """Fallback to Ollama HTTP API."""
+        """Fallback to Ollama HTTP API. Retries on 500 (model swap race)."""
         import httpx
         payload = {
             "model": model or "qwen2.5-coder:7b",
@@ -220,19 +220,27 @@ class LLMService:
                 "num_ctx": DEFAULT_CTX,
                 "temperature": DEFAULT_TEMPERATURE,
                 "num_thread": DEFAULT_THREADS,
+                "num_gpu": 999,
             },
         }
         if json_mode:
             payload["format"] = "json"
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "http://localhost:11434/api/generate",
-                json=payload,
-                timeout=timeout,
-            )
-            resp.raise_for_status()
-            return resp.json().get("response", "")
+        max_retries = 3
+        for attempt in range(max_retries):
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    "http://localhost:11434/api/generate",
+                    json=payload,
+                    timeout=timeout,
+                )
+                if resp.status_code == 500 and attempt < max_retries - 1:
+                    wait = 5 * (attempt + 1)
+                    logger.warning(f"Ollama 500 (attempt {attempt+1}), retrying in {wait}s (model may be swapping)")
+                    await asyncio.sleep(wait)
+                    continue
+                resp.raise_for_status()
+                return resp.json().get("response", "")
 
     async def get_status(self) -> dict:
         """Return current backend status."""

@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 class TesterAgent(Agent):
     name = "tester"
-    model = "qwen2.5-coder:3b"
+    model = "qwen2.5-coder:7b"
 
     async def run_tests(self) -> dict:
         """Run the test suite. Returns {"passed": bool, "output": str, "summary": str}."""
