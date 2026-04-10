@@ -1,13 +1,12 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
 # The repo the agents work on is the ollama-team project itself
 REPO_PATH = Path(__file__).parent.parent.parent
-
 
 async def _run(cmd: str, cwd: Optional[Path] = None) -> tuple[int, str, str]:
     """Run a git command and return (returncode, stdout, stderr)."""
@@ -20,7 +19,6 @@ async def _run(cmd: str, cwd: Optional[Path] = None) -> tuple[int, str, str]:
     stdout, stderr = await proc.communicate()
     return proc.returncode, stdout.decode().strip(), stderr.decode().strip()
 
-
 async def create_branch(name: str) -> bool:
     """Create and checkout a new branch."""
     code, out, err = await _run(f"git checkout -b {name}")
@@ -30,7 +28,6 @@ async def create_branch(name: str) -> bool:
     logger.info(f"Created branch: {name}")
     return True
 
-
 async def checkout(branch: str) -> bool:
     """Checkout an existing branch."""
     code, out, err = await _run(f"git checkout {branch}")
@@ -39,14 +36,12 @@ async def checkout(branch: str) -> bool:
         return False
     return True
 
-
 async def current_branch() -> str:
     """Get the current branch name."""
     code, out, err = await _run("git branch --show-current")
     return out if code == 0 else "unknown"
 
-
-async def commit(message: str, files: Optional[list[str]] = None) -> Optional[str]:
+async def commit(message: str, files: Optional[List[str]] = None) -> Optional[str]:
     """Stage files and commit. Returns commit hash or None on failure."""
     if files:
         for f in files:
@@ -62,7 +57,6 @@ async def commit(message: str, files: Optional[list[str]] = None) -> Optional[st
     code, sha, _ = await _run("git rev-parse HEAD")
     return sha if code == 0 else None
 
-
 async def merge(branch: str, into: str = "main") -> bool:
     """Merge a branch into the target branch."""
     await checkout(into)
@@ -75,70 +69,24 @@ async def merge(branch: str, into: str = "main") -> bool:
     logger.info(f"Merged {branch} into {into}")
     return True
 
-
 async def revert(commit_hash: Optional[str] = None) -> bool:
     """Revert the last commit or a specific commit."""
-    target = commit_hash or "HEAD"
-    code, out, err = await _run(f"git revert {target} --no-edit")
-    if code != 0:
-        logger.error(f"Revert failed: {err}")
-        await _run("git revert --abort")
-        return False
-    logger.info(f"Reverted {target}")
-    return True
-
+    if commit_hash is None:
+        code, out, err = await _run("git reset --hard HEAD~1")
+        return code == 0
+    else:
+        code, out, err = await _run(f"git revert {commit_hash}")
+        return code == 0
 
 async def get_diff(branch: Optional[str] = None) -> str:
-    """Get the diff of current changes or between branches."""
-    if branch:
-        code, out, err = await _run(f"git diff main...{branch}")
-    else:
+    """Get the diff of a branch or the working directory."""
+    if branch is None:
         code, out, err = await _run("git diff")
+    else:
+        code, out, err = await _run(f"git diff {branch}")
     return out
-
 
 async def get_staged_diff() -> str:
     """Get the diff of staged changes."""
     code, out, err = await _run("git diff --cached")
     return out
-
-
-async def get_log(count: int = 10) -> str:
-    """Get recent commit log."""
-    code, out, err = await _run(f"git log --oneline -n {count}")
-    return out
-
-
-async def delete_branch(name: str) -> bool:
-    """Delete a branch (must not be currently checked out)."""
-    code, out, err = await _run(f"git branch -D {name}")
-    return code == 0
-
-
-async def get_file_content(path: str) -> Optional[str]:
-    """Read a file from the repo."""
-    full_path = REPO_PATH / path
-    if not full_path.exists():
-        return None
-    return full_path.read_text(encoding="utf-8")
-
-
-async def write_file(path: str, content: str):
-    """Write content to a file in the repo."""
-    full_path = REPO_PATH / path
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_text(content, encoding="utf-8")
-
-
-async def list_files(directory: str = ".") -> list[str]:
-    """List tracked files in a directory."""
-    code, out, err = await _run(f"git ls-files {directory}")
-    if code != 0:
-        return []
-    return [f for f in out.split("\n") if f]
-
-
-async def has_uncommitted_changes() -> bool:
-    """Check if there are uncommitted changes."""
-    code, out, err = await _run("git status --porcelain")
-    return bool(out)
