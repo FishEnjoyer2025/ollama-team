@@ -1,5 +1,3 @@
-# backend/tests/test_planner.py
-
 import unittest
 from backend.agents.planner import planner
 
@@ -13,6 +11,17 @@ class TestPlanner(unittest.TestCase):
 
         # Assert
         self.assertTrue(result['completed'])
+        self.assertEqual(result['failed'], ['task1', 'task2'])
+
+    def test_full_failure(self):
+        # Arrange
+        partial_result = {'completed': False, 'failed': ['task1', 'task2']}
+
+        # Act
+        result = planner.handle_partial_failure(partial_result)
+
+        # Assert
+        self.assertFalse(result['completed'])
         self.assertEqual(result['failed'], ['task1', 'task2'])
 
 if __name__ == '__main__':
