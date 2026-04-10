@@ -15,7 +15,7 @@ class DeployerAgent:
     async def create_branch(self, description: str) -> str:
         """Create a feature branch for an improvement."""
         import time
-        ts = int(time.time())
+ts = int(time.time())
         # Sanitize description for branch name
         slug = description[:40].lower()
         slug = "".join(c if c.isalnum() or c == "-" else "-" for c in slug)
@@ -37,34 +37,24 @@ class DeployerAgent:
         return sha
 
     async def merge_to_main(self, branch: str) -> bool:
-        """Merge feature branch into main and push to GitHub."""
+        """Merge feature branch into main."""
         success = await git_service.merge(branch, "main")
         if success:
+            # Clean up the feature branch
             await git_service.delete_branch(branch)
-            await self.push_to_remote()
         return success
-
-    async def push_to_remote(self) -> bool:
-        """Push main to GitHub."""
-        code, out, err = await git_service._run("git push origin main")
-        if code != 0:
-            logger.warning(f"Git push failed (non-fatal): {err}")
-            return False
-        logger.info("Pushed to GitHub")
-        return True
 
     async def verify_health(self) -> bool:
         """Check system health after deploy."""
         return await check_health()
 
     async def rollback(self, reason: str) -> bool:
-        """Revert the last commit on main and push."""
+        """Revert the last commit on main."""
         logger.warning(f"Rolling back: {reason}")
         await git_service.checkout("main")
         success = await git_service.revert()
         if success:
             logger.info("Rollback successful")
-            await self.push_to_remote()
         else:
             logger.error("Rollback failed!")
         return success
@@ -76,7 +66,4 @@ class DeployerAgent:
         Full process restart would be handled by supervisor/systemd.
         """
         logger.info("Backend restart requested (handled by process manager)")
-        # The orchestrator checks for this flag
-        return True
-
-deployer = DeployerAgent()
+        # The orchestrator checks for t

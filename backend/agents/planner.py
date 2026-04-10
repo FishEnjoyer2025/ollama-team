@@ -39,15 +39,17 @@ class PlannerAgent(Agent):
 Recent cycles (DO NOT repeat these — pick something DIFFERENT):
 {chr(10).join(cycle_info) if cycle_info else "None yet"}
 
-Pick ONE task. Use EXACT file paths (not directories or globs):
-1. {{"description": "Add test for reviewer", "files": ["tests/test_reviewer.py"], "expected_outcome": "Better test coverage", "risk": "low"}}
-2. {{"description": "Improve reviewer prompt", "files": ["prompts/reviewer.md"], "expected_outcome": "Better reviews", "risk": "low"}}
-3. {{"description": "Add logging to deployer", "files": ["backend/agents/deployer.py"], "expected_outcome": "Better visibility", "risk": "low"}}
-4. {{"description": "Improve git_service error handling", "files": ["backend/services/git_service.py"], "expected_outcome": "Graceful failures", "risk": "low"}}
-5. {{"description": "Add test for git_service", "files": ["tests/test_git_service.py"], "expected_outcome": "Better coverage", "risk": "low"}}
-6. {{"description": "Improve tester prompt", "files": ["prompts/tester.md"], "expected_outcome": "Better testing", "risk": "low"}}
+Pick ONE task. Output the JSON exactly as shown. Vary your choice each cycle:
+1. {{"description": "Add test for reviewer agent", "files": ["tests/test_reviewer.py"], "expected_outcome": "Better test coverage", "risk": "low"}}
+2. {{"description": "Improve reviewer prompt for clearer output", "files": ["prompts/reviewer.md"], "expected_outcome": "Better reviews", "risk": "low"}}
+3. {{"description": "Improve git_service error handling", "files": ["backend/services/git_service.py"], "expected_outcome": "Graceful failures", "risk": "low"}}
+4. {{"description": "Add test for git_service functions", "files": ["tests/test_git_service.py"], "expected_outcome": "Better coverage", "risk": "low"}}
+5. {{"description": "Improve tester prompt for better test output", "files": ["prompts/tester.md"], "expected_outcome": "Better testing", "risk": "low"}}
+6. {{"description": "Add helper to validate file paths in tools.py", "files": ["backend/services/tools.py"], "expected_outcome": "Better validation", "risk": "low"}}
+7. {{"description": "Improve deployer prompt", "files": ["prompts/deployer.md"], "expected_outcome": "Clearer deploy steps", "risk": "low"}}
+8. {{"description": "Add test for safety system", "files": ["tests/test_safety_extended.py"], "expected_outcome": "More safety tests", "risk": "low"}}
 
-Output ONE of these JSON objects (or similar). Vary your choice each cycle:"""
+Output ONE of these JSON objects. Do NOT modify any file not listed above:"""
 
         result = await self.invoke_structured(context)
 
