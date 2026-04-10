@@ -18,7 +18,7 @@ class Agent:
 
     name: str = "base"
     model: str = "qwen2.5-coder:7b"
-    default_timeout: float = 300.0  # 5 minutes
+    default_timeout: float = 600.0  # 10 minutes (CPU inference is slow)
 
     def __init__(self):
         self._prompt_cache: Optional[str] = None
@@ -49,7 +49,7 @@ class Agent:
                     system=system_prompt,
                     timeout=timeout,
                 ),
-                timeout=timeout + 10,  # Small buffer over Ollama's timeout
+                timeout=timeout + 10,
             )
             success = True
             return response
@@ -66,11 +66,7 @@ class Agent:
     async def invoke_structured(
         self, context: str, timeout: Optional[float] = None
     ) -> dict:
-        """Invoke and parse JSON from the response.
-
-        Attempts to extract a JSON object from the response text.
-        Falls back to wrapping the raw text in a dict.
-        """
+        """Invoke and parse JSON from the response."""
         raw = await self.invoke(context, timeout)
         return self._parse_json(raw)
 
@@ -84,20 +80,19 @@ class Agent:
 
         # Try extracting from markdown code block
         if "```json" in text:
-            start = text.index("```json") + 7
-            end = text.index("```", start)
             try:
+                start = text.index("```json") + 7
+                end = text.index("```", start)
                 return json.loads(text[start:end].strip())
             except (json.JSONDecodeError, ValueError):
                 pass
 
         # Try extracting from generic code block
         if "```" in text:
-            start = text.index("```") + 3
-            # Skip language identifier on first line
-            newline = text.index("\n", start)
-            end = text.index("```", newline)
             try:
+                start = text.index("```") + 3
+                newline = text.index("\n", start)
+                end = text.index("```", newline)
                 return json.loads(text[newline:end].strip())
             except (json.JSONDecodeError, ValueError):
                 pass
@@ -105,7 +100,6 @@ class Agent:
         # Try finding JSON object in text
         for i, ch in enumerate(text):
             if ch == "{":
-                # Find matching closing brace
                 depth = 0
                 for j in range(i, len(text)):
                     if text[j] == "{":

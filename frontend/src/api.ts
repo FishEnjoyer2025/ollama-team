@@ -39,6 +39,14 @@ export const resumeLoop = () => request<{ status: string }>('/api/system/resume'
 export const stopLoop = () => request<{ status: string }>('/api/system/stop', { method: 'POST' });
 export const triggerCycle = () => request<{ cycle_id: string }>('/api/system/trigger', { method: 'POST' });
 
+// Guidance
+export const getGuidance = () => request<{ message: string }>('/api/system/guidance');
+export const setGuidance = (message: string) =>
+  request<{ status: string }>('/api/system/guidance', {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  });
+
 // Settings
 export const getSettings = () => request<Record<string, string>>('/api/settings');
 export const updateSettings = (updates: Record<string, string | number | boolean>) =>

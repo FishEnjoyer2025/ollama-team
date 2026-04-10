@@ -13,66 +13,30 @@ class CoderAgent(Agent):
     async def implement(self, proposal: dict) -> list[dict]:
         """Implement a proposed change.
 
-        Args:
-            proposal: dict with description, files, expected_outcome, risk
-
         Returns:
             List of file edits: [{"path": str, "content": str}]
         """
-        # Read current content of files to modify
+        # Limit to 2 files max to keep generation fast
+        target_files = proposal.get("files", [])[:2]
+
+        # Read only the target files (no extra context — speed over quality)
         file_contents = {}
-        for f in proposal.get("files", []):
+        for f in target_files:
             content = await git_service.get_file_content(f)
             if content is not None:
-                file_contents[f] = content
+                # Truncate large files to keep prompt small
+                file_contents[f] = content[:2000]
 
-        # Also read related files for context
-        all_files = await git_service.list_files()
-        related = [f for f in all_files if any(
-            f.startswith(p.rsplit("/", 1)[0] + "/") if "/" in p else False
-            for p in proposal.get("files", [])
-        )]
-        for f in related[:5]:  # Limit context
-            if f not in file_contents:
-                content = await git_service.get_file_content(f)
-                if content:
-                    file_contents[f] = content[:1500]  # Truncate for context
+        context = f"""Modify these files for: {proposal.get('description', '')}
 
-        context = f"""## Task
-Implement the following improvement to this codebase:
-
-**Description:** {proposal.get('description', '')}
-**Expected Outcome:** {proposal.get('expected_outcome', '')}
-**Risk Level:** {proposal.get('risk', 'medium')}
-
-## Files to Modify
-{json.dumps(proposal.get('files', []))}
-
-## Current File Contents
 {chr(10).join(f'--- {path} ---{chr(10)}{content}' for path, content in file_contents.items())}
 
-## Instructions
-Implement the change. For each file you modify or create, output the COMPLETE new file content.
-
-Respond with ONLY a JSON array (no markdown, no explanation):
-[
-    {{"path": "relative/path/to/file.py", "content": "complete file content here"}},
-    ...
-]
-
-Rules:
-- Output the COMPLETE file content, not patches or diffs
-- Only modify files listed in the proposal, unless you need to create a new file
-- Follow existing code style and conventions
-- Do not modify protected files (backend/services/health.py, backend/db.py schema)
-- Include proper imports
-- Keep changes minimal and focused"""
+Output ONLY a JSON array. Each item has "path" and "content" (the full new file).
+Keep changes minimal. Output:"""
 
         result = await self.invoke_structured(context)
 
-        # Handle response format
         if isinstance(result, dict) and "raw_response" in result:
-            # Try to parse as a list from raw response
             raw = result["raw_response"]
             try:
                 if "[" in raw:
@@ -87,8 +51,7 @@ Rules:
         if isinstance(result, list):
             return result
 
-        # Single file edit wrapped in dict
-        if "path" in result and "content" in result:
+        if isinstance(result, dict) and "path" in result and "content" in result:
             return [result]
 
         return []

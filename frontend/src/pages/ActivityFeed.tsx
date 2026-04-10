@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getOrchestratorStatus, triggerCycle, pauseLoop, resumeLoop, stopLoop, type OrchestratorStatus } from '../api';
+import { getOrchestratorStatus, triggerCycle, pauseLoop, resumeLoop, stopLoop, getGuidance, setGuidance, type OrchestratorStatus } from '../api';
 import type { WSMessage } from '../hooks/useWebSocket';
 
 const STEP_LABELS: Record<string, string> = {
@@ -28,9 +28,12 @@ interface Props {
 
 export default function ActivityFeed({ ws }: Props) {
   const [status, setStatus] = useState<OrchestratorStatus | null>(null);
+  const [guidance, setGuidanceText] = useState('');
+  const [guidanceSaved, setGuidanceSaved] = useState(false);
 
   useEffect(() => {
     getOrchestratorStatus().then(setStatus).catch(() => {});
+    getGuidance().then((r) => setGuidanceText(r.message || '')).catch(() => {});
     const interval = setInterval(() => {
       getOrchestratorStatus().then(setStatus).catch(() => {});
     }, 5000);
@@ -95,6 +98,35 @@ export default function ActivityFeed({ ws }: Props) {
               Stop
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Guidance box */}
+      <div className="bg-gray-900 rounded-lg border border-gray-800 p-4">
+        <h3 className="text-sm font-medium text-gray-400 mb-2">Guide the Agents</h3>
+        <p className="text-xs text-gray-600 mb-2">This message is shown to the Planner at the start of every cycle as top priority.</p>
+        <div className="flex gap-2">
+          <textarea
+            value={guidance}
+            onChange={(e) => { setGuidanceText(e.target.value); setGuidanceSaved(false); }}
+            placeholder="e.g. Focus on improving error handling in the orchestrator..."
+            rows={2}
+            className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-gray-200 placeholder-gray-600 resize-none"
+          />
+          <button
+            onClick={async () => {
+              await setGuidance(guidance);
+              setGuidanceSaved(true);
+              setTimeout(() => setGuidanceSaved(false), 3000);
+            }}
+            className={`px-4 self-end rounded text-sm font-medium transition-all h-9 ${
+              guidanceSaved
+                ? 'bg-green-600 text-white'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+          >
+            {guidanceSaved ? 'Saved' : 'Send'}
+          </button>
         </div>
       </div>
 

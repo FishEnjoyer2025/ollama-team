@@ -10,6 +10,7 @@ from backend.agents.planner import planner
 from backend.agents.coder import coder
 from backend.agents.reviewer import reviewer
 from backend.agents.tester import tester
+from backend.services.tools import validate_edits, validate_python_syntax
 from backend.agents.deployer import deployer
 from backend.services import git_service
 
@@ -23,6 +24,11 @@ PROTECTED_PATHS = {
     ".git",
     "ollama_team.db",
     "docs/",
+    "backend/agents/base.py",
+    "backend/orchestrator.py",
+    "backend/main.py",
+    "backend/services/tools.py",
+    "backend/services/ollama_service.py",
 }
 
 # Frontend is also protected (agents work on backend/prompts only)
@@ -174,6 +180,17 @@ class Orchestrator:
 
                 # Apply edits
                 modified = await coder.apply_edits(edits)
+
+                # Validate syntax before proceeding
+                valid, syntax_issues = await validate_edits(edits)
+                if not valid:
+                    logger.warning(f"[{cycle_id}] Syntax validation failed: {syntax_issues}")
+                    await self._emit("step", {"action": "validation_failed", "issues": syntax_issues})
+                    if attempt < max_retries - 1:
+                        continue
+                    await self._abandon(cycle_id, branch_name, f"Syntax errors: {'; '.join(syntax_issues)}")
+                    return cycle_id
+
                 await self._emit("step", {"action": "completed", "agent": "coder", "files": modified})
 
                 # Commit on the branch

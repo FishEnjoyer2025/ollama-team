@@ -70,6 +70,10 @@ class FeedbackIn(BaseModel):
     note: Optional[str] = None
 
 
+class GuidanceIn(BaseModel):
+    message: str
+
+
 class SettingsUpdate(BaseModel):
     cycle_cooldown_seconds: Optional[int] = None
     max_retries_per_step: Optional[int] = None
@@ -219,6 +223,20 @@ async def resume_loop():
     await db.update_settings({"paused": "false"})
     await ws_manager.broadcast({"type": "system", "action": "resumed"})
     return {"status": "resumed"}
+
+
+@app.post("/api/system/guidance")
+async def set_guidance(body: GuidanceIn):
+    """Set a guidance prompt that the Planner will see on its next cycle."""
+    await db.update_settings({"guidance": body.message})
+    await ws_manager.broadcast({"type": "system", "action": "guidance_set", "message": body.message})
+    return {"status": "ok", "message": body.message}
+
+
+@app.get("/api/system/guidance")
+async def get_guidance():
+    settings = await db.get_settings()
+    return {"message": settings.get("guidance", "")}
 
 
 @app.post("/api/system/stop")

@@ -14,6 +14,7 @@ export default function CycleHistory() {
   const [filter, setFilter] = useState<string>('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
+  const [ratings, setRatings] = useState<Record<string, 'up' | 'down'>>({});
 
   const load = () => {
     getCycles({ status: filter || undefined, limit: 50 })
@@ -26,8 +27,8 @@ export default function CycleHistory() {
   const handleFeedback = async (cycleId: string, rating: 'up' | 'down') => {
     const note = noteInputs[cycleId] || undefined;
     await submitFeedback(cycleId, rating, note);
+    setRatings((prev) => ({ ...prev, [cycleId]: rating }));
     setNoteInputs((prev) => ({ ...prev, [cycleId]: '' }));
-    load();
   };
 
   return (
@@ -51,7 +52,9 @@ export default function CycleHistory() {
       )}
 
       <div className="space-y-2">
-        {cycles.map((cycle) => (
+        {cycles.map((cycle) => {
+          const rated = ratings[cycle.id];
+          return (
           <div key={cycle.id} className="bg-gray-900 rounded-lg border border-gray-800">
             {/* Summary row */}
             <button
@@ -67,8 +70,13 @@ export default function CycleHistory() {
                   ? cycle.proposal.description
                   : 'No description'}
               </span>
+              {rated && (
+                <span className={`text-lg ${rated === 'up' ? 'text-green-400' : 'text-red-400'}`}>
+                  {rated === 'up' ? '\u25B2' : '\u25BC'}
+                </span>
+              )}
               <span className="text-xs text-gray-600 shrink-0">
-                {cycle.started_at ? new Date(cycle.started_at).toLocaleString() : ''}
+                {cycle.started_at ? new Date(cycle.started_at + 'Z').toLocaleString() : ''}
               </span>
             </button>
 
@@ -115,27 +123,36 @@ export default function CycleHistory() {
 
                 {/* Feedback */}
                 <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
-                  <span className="text-xs text-gray-500">Rate this cycle:</span>
-                  <button onClick={() => handleFeedback(cycle.id, 'up')}
-                    className="px-3 py-1 bg-green-900/40 hover:bg-green-800/60 text-green-400 rounded text-sm transition-colors">
-                    Thumbs Up
-                  </button>
-                  <button onClick={() => handleFeedback(cycle.id, 'down')}
-                    className="px-3 py-1 bg-red-900/40 hover:bg-red-800/60 text-red-400 rounded text-sm transition-colors">
-                    Thumbs Down
-                  </button>
-                  <input
-                    type="text"
-                    placeholder="Optional note..."
-                    value={noteInputs[cycle.id] || ''}
-                    onChange={(e) => setNoteInputs((prev) => ({ ...prev, [cycle.id]: e.target.value }))}
-                    className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm text-gray-300 placeholder-gray-600"
-                  />
+                  {rated ? (
+                    <span className={`text-sm font-medium ${rated === 'up' ? 'text-green-400' : 'text-red-400'}`}>
+                      {rated === 'up' ? '\u25B2 Thumbs up' : '\u25BC Thumbs down'} recorded
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-xs text-gray-500">Rate:</span>
+                      <button onClick={() => handleFeedback(cycle.id, 'up')}
+                        className="px-4 py-1.5 bg-green-900/40 hover:bg-green-600 text-green-400 hover:text-white rounded text-sm font-medium transition-all">
+                        Thumbs Up
+                      </button>
+                      <button onClick={() => handleFeedback(cycle.id, 'down')}
+                        className="px-4 py-1.5 bg-red-900/40 hover:bg-red-600 text-red-400 hover:text-white rounded text-sm font-medium transition-all">
+                        Thumbs Down
+                      </button>
+                      <input
+                        type="text"
+                        placeholder="Optional note..."
+                        value={noteInputs[cycle.id] || ''}
+                        onChange={(e) => setNoteInputs((prev) => ({ ...prev, [cycle.id]: e.target.value }))}
+                        className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm text-gray-300 placeholder-gray-600"
+                      />
+                    </>
+                  )}
                 </div>
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

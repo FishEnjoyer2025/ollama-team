@@ -12,85 +12,51 @@ class PlannerAgent(Agent):
     model = "qwen2.5:7b"
 
     async def evaluate_and_propose(self) -> dict:
-        """Evaluate the system and propose an improvement.
-
-        Returns a proposal dict with:
-            description: str
-            files: list[str]
-            expected_outcome: str
-            risk: str (low/medium/high)
-        """
-        # Gather context
+        """Evaluate the system and propose an improvement."""
         feedback_summary = await db.get_feedback_summary()
-        recent_cycles = await db.list_cycles(limit=5)
+        recent_cycles = await db.list_cycles(limit=3)
         file_list = await git_service.list_files()
-        git_log = await git_service.get_log(10)
+        settings = await db.get_settings()
+        guidance = settings.get("guidance", "")
 
-        # Read the project's own structure for self-awareness
-        codebase_overview = []
-        key_files = [
-            "backend/orchestrator.py",
-            "backend/agents/base.py",
-            "backend/main.py",
-            "requirements.txt",
-        ]
-        for f in key_files:
-            content = await git_service.get_file_content(f)
-            if content:
-                codebase_overview.append(f"--- {f} ---\n{content[:2000]}")
+        # Compact cycle summaries
+        cycle_info = []
+        for c in recent_cycles:
+            p = c.get("proposal", "")
+            if isinstance(p, str):
+                try:
+                    p = json.loads(p)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            desc = p.get("description", "") if isinstance(p, dict) else str(p)[:80]
+            cycle_info.append(f"- {c['id']} {c['status']}: {desc[:80]}")
 
-        context = f"""## Current System State
+        guidance_block = ""
+        if guidance:
+            guidance_block = f"\nOPERATOR GUIDANCE (highest priority):\n{guidance}\n"
 
-### Feedback Summary
-- Total thumbs up: {feedback_summary['total_up']}
-- Total thumbs down: {feedback_summary['total_down']}
+        context = f"""Thumbs up: {feedback_summary['total_up']} | Thumbs down: {feedback_summary['total_down']}
+{guidance_block}
+Recent cycles:
+{chr(10).join(cycle_info) if cycle_info else "None yet"}
 
-### Recent Negative Feedback (learn from these):
-{json.dumps(feedback_summary['recent_negative_feedback'], indent=2)}
+Files: {', '.join(file_list[:30])}
 
-### Recent Positive Feedback (keep doing these):
-{json.dumps(feedback_summary['recent_positive_feedback'], indent=2)}
+Propose ONE small improvement. Limit to 1-2 files. Prefer backend/agents/ or prompts/ files.
 
-### Recent Cycles:
-{json.dumps([{{'id': c['id'], 'status': c['status'], 'proposal': c.get('proposal', '')}} for c in recent_cycles], indent=2)}
-
-### Git Log (recent commits):
-{git_log}
-
-### Files in Project:
-{chr(10).join(file_list[:50])}
-
-### Key File Contents:
-{chr(10).join(codebase_overview)}
-
-## Task
-Analyze the current state of this project and propose ONE specific improvement.
-Focus on:
-1. Fixing anything that received thumbs-down feedback
-2. Improving code quality, test coverage, or performance
-3. Adding missing capabilities
-4. Optimizing agent prompts based on feedback patterns
-
-Respond with ONLY a JSON object (no markdown, no explanation):
-{{
-    "description": "What this change does and why",
-    "files": ["list", "of", "files", "to", "modify"],
-    "expected_outcome": "What will be better after this change",
-    "risk": "low|medium|high"
-}}"""
+JSON only:
+{{"description": "...", "files": ["max 2 files"], "expected_outcome": "...", "risk": "low"}}"""
 
         result = await self.invoke_structured(context)
 
-        # Validate required fields
-        required = ["description", "files", "expected_outcome", "risk"]
-        for field in required:
-            if field not in result or result.get(field) == "":
-                result[field] = result.get(field, "unknown")
-
         if "files" not in result or not isinstance(result.get("files"), list):
             result["files"] = []
+        result["files"] = result["files"][:2]
         if "risk" not in result or result["risk"] not in ("low", "medium", "high"):
-            result["risk"] = "medium"
+            result["risk"] = "low"
+        for field in ["description", "expected_outcome"]:
+            if field not in result:
+                result[field] = "unknown"
 
         return result
 

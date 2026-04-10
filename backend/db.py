@@ -46,9 +46,9 @@ CREATE TABLE IF NOT EXISTS settings (
 """
 
 DEFAULT_SETTINGS = {
-    "cycle_cooldown_seconds": "120",
+    "cycle_cooldown_seconds": "30",
     "max_retries_per_step": "3",
-    "process_timeout_seconds": "300",
+    "process_timeout_seconds": "600",
     "health_check_timeout_seconds": "60",
     "paused": "false",
     "stopped": "false",
@@ -260,6 +260,7 @@ async def record_agent_invocation(agent_name: str, success: bool, duration: floa
                    avg_duration_seconds = (avg_duration_seconds * (total_invocations - 1) + ?) / total_invocations,
                    last_invoked_at = datetime('now')""",
             (
+                agent_name,
                 1 if success else 0,
                 0 if success else 1,
                 duration,

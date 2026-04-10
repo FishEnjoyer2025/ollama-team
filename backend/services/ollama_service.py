@@ -33,8 +33,9 @@ class OllamaService:
                         "system": system,
                         "stream": False,
                         "options": {
-                            "num_ctx": 8192,
-                            "temperature": 0.7,
+                            "num_ctx": 4096,
+                            "temperature": 0.3,
+                            "num_thread": 8,
                         },
                     },
                     timeout=timeout,
