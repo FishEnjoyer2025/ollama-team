@@ -5,12 +5,22 @@ from backend.services import git_service
 
 logger = logging.getLogger(__name__)
 
-PROJECT_STRUCTURE = """Project layout (use these import paths):
-- backend/agents/planner.py, coder.py, reviewer.py, tester.py, deployer.py
-- backend/services/ollama_service.py, git_service.py, tools.py
-- backend/agents/base.py (DO NOT MODIFY - protected)
-- tests/test_*.py (imports: from backend.agents.planner import planner)
-- prompts/*.md (agent system prompts, plain markdown)"""
+PROJECT_STRUCTURE = """Project layout and API reference:
+
+Agents (all inherit from Agent base class with: invoke(), invoke_json(), invoke_structured(), _parse_json()):
+- backend/agents/planner.py: PlannerAgent with evaluate_and_propose() -> dict
+- backend/agents/coder.py: CoderAgent with implement(proposal) -> list[dict], apply_edits(edits) -> list[str]
+- backend/agents/reviewer.py: ReviewerAgent with review(proposal, branch) -> dict
+- backend/agents/tester.py: TesterAgent with run_tests() -> dict, validate(proposal, edits) -> dict
+- backend/agents/deployer.py: DeployerAgent with create_branch(desc), commit_changes(msg), merge_to_main(branch), rollback(reason)
+
+Services:
+- backend/services/git_service.py: create_branch(), checkout(), commit(), merge(), revert(), get_diff(), get_log(), get_file_content(path), write_file(path, content), list_files()
+- backend/services/tools.py: validate_python_syntax(path), lint_file(path), validate_edits(edits), run_command(cmd)
+
+Tests use: from backend.agents.reviewer import reviewer (lowercase singleton)
+Tests use: from backend.services.git_service import get_diff (function)
+Prompts are plain markdown files in prompts/"""
 
 
 class CoderAgent(Agent):
